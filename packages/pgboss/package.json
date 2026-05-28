@@ -1,7 +1,7 @@
 {
 	"name": "@event-bus-manager/pgboss",
-	"version": "0.1.8",
-	"description": "PgBoss transport for EngMas Event Bus",
+	"version": "0.1.9",
+	"description": "PgBoss transport for Event Bus",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"files": [
@@ -16,7 +16,7 @@
 		"typescript": "^6.0.3"
 	},
 	"dependencies": {
-		"@event-bus-manager/core": "0.1.8",
+		"@event-bus-manager/core": "0.1.9",
 		"pg-boss": "^12.15.0",
 		"tslib": "^2.8.1"
 	}
