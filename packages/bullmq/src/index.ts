@@ -5,8 +5,8 @@ import {
 	EventBusConfig,
 	EventBusLogger,
 	registerEventBus,
-} from "@engmas/event-bus-core";
-import { Queue, Worker as BullWorker } from "bullmq";
+} from "@event-bus-manager/core";
+import { Queue, Worker as BullWorker, Job } from "bullmq";
 
 export interface BullMQEventBusConfig extends EventBusConfig {
 	redis: {
@@ -58,7 +58,7 @@ export class BullMQEventBus extends CoreEventBus {
 		const queueName = this._queueName(handler);
 		const worker = new BullWorker(
 			queueName,
-			async (job) => {
+			async (job: Job) => {
 				await handler.handle(job.data);
 			},
 			{ connection: this.config.redis },

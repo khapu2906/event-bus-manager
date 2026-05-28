@@ -5,8 +5,8 @@ import {
 	EventBusConfig,
 	EventBusLogger,
 	registerEventBus,
-} from "@engmas/event-bus-core";
-import PgBoss from "pg-boss";
+} from "@event-bus-manager/core";
+import { PgBoss } from "pg-boss";
 import type PgBossType from "pg-boss";
 
 export interface PgBossEventBusConfig extends EventBusConfig {
