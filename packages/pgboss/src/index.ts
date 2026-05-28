@@ -6,11 +6,10 @@ import {
 	EventBusLogger,
 	registerEventBus,
 } from "@event-bus-manager/core";
-import { PgBoss } from "pg-boss";
-import type PgBossType from "pg-boss";
+import { PgBoss, type Job } from "pg-boss";
 
 export interface PgBossEventBusConfig extends EventBusConfig {
-	connectionString: string;
+	connectionString?: string;
 }
 
 export class PgBossEventBus extends CoreEventBus {
@@ -21,6 +20,9 @@ export class PgBossEventBus extends CoreEventBus {
 		logger?: EventBusLogger,
 	) {
 		super(config, logger);
+		if (!config.connectionString) {
+			throw new Error("PgBossEventBus requires config.connectionString");
+		}
 		this.boss = new PgBoss(config.connectionString);
 	}
 
@@ -61,21 +63,16 @@ export class PgBossEventBus extends CoreEventBus {
 	private async _registerWorker(handler: EventHandler): Promise<void> {
 		const queueName = this._queueName(handler);
 		await this.boss.createQueue(queueName);
-		await this.boss.work(
-			queueName,
-			async (jobs: Array<PgBossType.Job<DomainEvent>>) => {
-				for (const job of jobs) {
-					try {
-						await handler.handle(job.data);
-					} catch (error) {
-						this.logger.error(
-							`Handler ${handler.handlerName} failed: ${error}`,
-						);
-						throw error;
-					}
+		await this.boss.work(queueName, async (jobs: Array<Job<DomainEvent>>) => {
+			for (const job of jobs) {
+				try {
+					await handler.handle(job.data);
+				} catch (error) {
+					this.logger.error(`Handler ${handler.handlerName} failed: ${error}`);
+					throw error;
 				}
-			},
-		);
+			}
+		});
 	}
 
 	private _queueName(handler: EventHandler): string {
@@ -84,4 +81,7 @@ export class PgBossEventBus extends CoreEventBus {
 }
 
 // Tự đăng ký vào Core Registry
-registerEventBus("pgboss", (config: any) => new PgBossEventBus(config));
+registerEventBus(
+	"pgboss",
+	(config: PgBossEventBusConfig) => new PgBossEventBus(config),
+);
