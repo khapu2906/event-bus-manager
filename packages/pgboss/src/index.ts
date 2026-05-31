@@ -45,12 +45,15 @@ export class PgBossEventBus extends CoreEventBus {
 		this.started = false;
 	}
 
-	protected async _publishInternal(event: DomainEvent): Promise<void> {
+	protected async _publishInternal(event: DomainEvent): Promise<string[]> {
 		const key = this._eventKey(event.name, event.version);
 		const handlers = this.handlers.get(key) || [];
-		await Promise.all(
-			handlers.map((h) => this.boss.send(this._queueName(h), event)),
+		const results = await Promise.all(
+			handlers.map((h) =>
+				this.boss.send(this._queueName(h), event, { id: event.id }),
+			),
 		);
+		return results.filter((id): id is string => id !== null);
 	}
 
 	protected override _onHandlerSubscribed(
@@ -66,7 +69,11 @@ export class PgBossEventBus extends CoreEventBus {
 		await this.boss.work(queueName, async (jobs: Array<Job<DomainEvent>>) => {
 			for (const job of jobs) {
 				try {
-					await handler.handle(job.data);
+					const event: DomainEvent = {
+						...job.data,
+						occurredAt: new Date(job.data.occurredAt),
+					};
+					await handler.handle(event);
 				} catch (error) {
 					this.logger.error(`Handler ${handler.handlerName} failed: ${error}`);
 					throw error;

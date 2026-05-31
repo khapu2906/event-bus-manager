@@ -11,13 +11,18 @@ export interface EventBusAsyncConfig {
 	deleteArchivedInterval: string;
 }
 
+export type EventBusType = string;
+
 export interface EventBusConfig {
+	type: EventBusType;
 	role: EventBusRole;
 	events: EventBusEvents;
 	handlers: EventBusHandlers;
 	workers: EventBusWorkers;
 	async: EventBusAsyncConfig;
 	debug?: boolean;
+	// Allow transport-specific extra fields (e.g. redis, connectionString)
+	[key: string]: unknown;
 }
 
 export function resolveCoreConfig(
@@ -50,12 +55,19 @@ export function resolveCoreConfig(
 			.filter(Boolean);
 	};
 
+	const resolveType = (): EventBusType => {
+		return process.env.EVENT_BUS_TYPE?.toLowerCase() || "memory";
+	};
+
 	return {
-		role: (process.env.EVENT_BUS_ROLE as any) || "both",
-		events: resolveEvents(),
-		handlers: resolveHandlers(),
-		workers: resolveWorkers(),
-		debug: process.env.EVENT_BUS_DEBUG === "true",
+		type: overrides?.type ?? resolveType(),
+		role:
+			overrides?.role ??
+			((process.env.EVENT_BUS_ROLE as EventBusRole) || "both"),
+		events: overrides?.events ?? resolveEvents(),
+		handlers: overrides?.handlers ?? resolveHandlers(),
+		workers: overrides?.workers ?? resolveWorkers(),
+		debug: overrides?.debug ?? process.env.EVENT_BUS_DEBUG === "true",
 		async: {
 			maxRetries: parseInt(process.env.EVENT_BUS_MAX_RETRIES || "3", 10),
 			retryDelay: parseInt(process.env.EVENT_BUS_RETRY_DELAY || "5000", 10),
@@ -65,6 +77,5 @@ export function resolveCoreConfig(
 				process.env.EVENT_BUS_DELETE_ARCHIVED_INTERVAL || "7 days",
 			...overrides?.async,
 		},
-		...overrides,
 	};
 }

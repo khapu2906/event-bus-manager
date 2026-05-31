@@ -51,20 +51,32 @@ export class BullMQEventBus extends CoreEventBus {
 		this.started = false;
 	}
 
-	protected async _publishInternal(event: DomainEvent): Promise<void> {
+	protected async _publishInternal(event: DomainEvent): Promise<string[]> {
 		const key = this._eventKey(event.name, event.version);
-		const handlers = this.handlers.get(key) || [];
-		if (handlers.length === 0) {
+
+		// Merge local handlers + remote handler stubs as publish targets
+		const localHandlers = this.handlers.get(key) || [];
+		const remoteHandlers = (this as any).remoteHandlers.get(key) || [];
+		const allTargets = [
+			...localHandlers,
+			...remoteHandlers.filter(
+				(r: any) => !localHandlers.some((l) => l.handlerName === r.handlerName),
+			),
+		];
+
+		if (allTargets.length === 0) {
 			this._log(`No handlers for ${key}, skipping`);
-			return;
+			return [];
 		}
-		await Promise.all(
-			handlers.map((h) => {
+
+		const results = await Promise.all(
+			allTargets.map((h) => {
 				const q = this._getOrCreateQueue(this._queueName(h));
 				this._log(`Queuing ${key} → ${this._queueName(h)}`);
-				return q.add(key, event);
+				return q.add(key, event, { jobId: event.id });
 			}),
 		);
+		return results.map((job) => job.id || "");
 	}
 
 	protected override _onHandlerSubscribed(
@@ -81,7 +93,11 @@ export class BullMQEventBus extends CoreEventBus {
 			queueName,
 			async (job: Job) => {
 				try {
-					await handler.handle(job.data);
+					const event: DomainEvent = {
+						...job.data,
+						occurredAt: new Date(job.data.occurredAt),
+					};
+					await handler.handle(event);
 				} catch (error) {
 					this.logger.error(
 						`Handler "${handler.handlerName}" failed for job ${job.id}: ${error}`,

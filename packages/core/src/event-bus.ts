@@ -1,17 +1,30 @@
 import { EventBusLogger, defaultLogger } from "./logger";
-import { DomainEvent } from "./event";
-import { EventHandler } from "./event-handler";
-import { EventBusConfig, EventBusRole } from "./config";
+import type { DomainEvent } from "./event";
+import type { EventHandler } from "./event-handler";
+import type { EventBusConfig, EventBusRole } from "./config";
 
 export interface EventBus {
 	start(): Promise<void>;
 	stop(): Promise<void>;
-	publish(event: DomainEvent): Promise<void>;
+	publish(event: DomainEvent): Promise<string[]>; // Returns job IDs
 	subscribe(handler: EventHandler): void;
+	/**
+	 * Register a remote handler stub — declares the queue target without
+	 * creating a local consumer. Use this in publisher-role services to
+	 * tell the bus where to route events.
+	 */
+	registerRemoteHandler(
+		handler: Pick<EventHandler, "eventName" | "eventVersion" | "handlerName">,
+	): void;
 }
 
 export abstract class CoreEventBus implements EventBus {
 	protected handlers = new Map<string, EventHandler[]>();
+	/** Remote handler stubs — queue targets only, no local consumer */
+	protected remoteHandlers = new Map<
+		string,
+		Pick<EventHandler, "eventName" | "eventVersion" | "handlerName">[]
+	>();
 	protected started = false;
 	protected static instanceCount = 0;
 	protected readonly instanceId: number;
@@ -29,34 +42,41 @@ export abstract class CoreEventBus implements EventBus {
 
 	abstract start(): Promise<void>;
 	abstract stop(): Promise<void>;
-	protected abstract _publishInternal(event: DomainEvent): Promise<void>;
+	protected abstract _publishInternal(event: DomainEvent): Promise<string[]>;
 
-	async publish(event: DomainEvent): Promise<void> {
-		if (this.role === "consumer") throw new Error("Publisher disabled");
-		if (!this.started) throw new Error("Bus not started");
+	async publish(event: DomainEvent): Promise<string[]> {
+		if (this.role === "consumer")
+			throw new Error(
+				`EventBus is configured as role="consumer" — publishing is disabled.`,
+			);
+		if (!this.started)
+			throw new Error("Bus not started. Call start() before publishing.");
 
 		this._log(`Publishing: ${event.name}`);
-		await this._publishInternal(event);
+		return await this._publishInternal(event);
 	}
 
 	subscribe(handler: EventHandler): void {
-		if (this.role === "publisher") return;
+		if (this.role === "publisher") {
+			this.logger.warn(
+				`EventBus role="publisher" — use registerRemoteHandler() instead of subscribe().`,
+			);
+			return;
+		}
 
 		// Filter by Event Name
 		if (
 			this.config.events !== "*" &&
 			!this.config.events.includes(handler.eventName)
 		) {
-			this.logger.warn(`Event ${handler.eventName} not allowed`);
 			return;
 		}
 
-		// Filter by Worker Name (EVENT_BUS_WORKERS filters by handlerName)
+		// Filter by Worker Name
 		if (
 			this.config.workers !== "*" &&
 			!this.config.workers.includes(handler.handlerName)
 		) {
-			this._log(`Handler ${handler.handlerName} skipped by EVENT_BUS_WORKERS`);
 			return;
 		}
 
@@ -67,13 +87,34 @@ export abstract class CoreEventBus implements EventBus {
 		this._onHandlerSubscribed(key, handler);
 	}
 
+	registerRemoteHandler(
+		handler: Pick<EventHandler, "eventName" | "eventVersion" | "handlerName">,
+	): void {
+		const key = this._eventKey(handler.eventName, handler.eventVersion);
+		if (!this.remoteHandlers.has(key)) this.remoteHandlers.set(key, []);
+		const existing = this.remoteHandlers.get(key)!;
+		if (!existing.some((h) => h.handlerName === handler.handlerName)) {
+			existing.push(handler);
+		}
+		this._log(`Registered remote handler: ${key} → ${handler.handlerName}`);
+	}
+
 	protected _onHandlerSubscribed(_key: string, _handler: EventHandler): void {}
 
 	protected async _executeHandlers(
 		event: DomainEvent,
 		handlers: EventHandler[],
 	): Promise<void> {
-		await Promise.allSettled(handlers.map((h) => h.handle(event)));
+		const results = await Promise.allSettled(
+			handlers.map((h) => h.handle(event)),
+		);
+		results.forEach((result, i) => {
+			if (result.status === "rejected") {
+				this.logger.error(
+					`Handler "${handlers[i]!.handlerName}" failed: ${result.reason}`,
+				);
+			}
+		});
 	}
 
 	protected _eventKey(name: string, version: string): string {
