@@ -1,22 +1,30 @@
 {
 	"name": "@event-bus-manager/bullmq",
-	"version": "0.1.12",
+	"version": "0.1.16",
 	"description": "BullMQ transport for Event Bus",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		}
+	},
 	"files": [
 		"dist",
 		"README.md"
 	],
 	"scripts": {
-		"build": "tsc"
+		"build": "tsup"
 	},
 	"devDependencies": {
 		"@types/node": "^25.9.1",
+		"tsup": "^8.5.1",
 		"typescript": "^6.0.3"
 	},
 	"dependencies": {
-		"@event-bus-manager/core": "^0.1.11",
+		"@event-bus-manager/core": "^0.1.12",
 		"bullmq": "^5.76.0",
 		"tslib": "^2.8.1"
 	}

@@ -8,11 +8,17 @@ import {
 } from "@event-bus-manager/core";
 import { Queue, Worker as BullWorker, Job } from "bullmq";
 
+export interface BullMQRedisConfig {
+	host: string;
+	port: number;
+	password?: string;
+	username?: string;
+	db?: number;
+	tls?: object;
+}
+
 export interface BullMQEventBusConfig extends EventBusConfig {
-	redis?: {
-		host: string;
-		port: number;
-	};
+	redis?: BullMQRedisConfig;
 }
 
 export class BullMQEventBus extends CoreEventBus {
@@ -25,7 +31,7 @@ export class BullMQEventBus extends CoreEventBus {
 	) {
 		super(config, logger);
 		if (!config.redis) {
-			throw new Error("BullMQEventBus requires config.redis ({ host, port })");
+			throw new Error("BullMQEventBus requires config.redis ({ host, port, password?, ... })");
 		}
 	}
 
