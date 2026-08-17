@@ -1,0 +1,40 @@
+{
+	"name": "@event-bus-manager/mysql-store",
+	"version": "0.1.1",
+	"description": "MySQL-backed OutboxStore/InboxStore implementations for Event Bus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/khapu2906/event-bus-manager.git",
+		"directory": "packages/mysql-store"
+	},
+	"homepage": "https://github.com/khapu2906/event-bus-manager/tree/main/packages/mysql-store#readme",
+	"bugs": {
+		"url": "https://github.com/khapu2906/event-bus-manager/issues"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsup"
+	},
+	"devDependencies": {
+		"@types/node": "^25.9.1",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3"
+	},
+	"dependencies": {
+		"@event-bus-manager/core": "^0.2.2",
+		"mysql2": "^3.11.5",
+		"tslib": "^2.8.1"
+	}
+}
