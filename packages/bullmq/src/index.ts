@@ -59,16 +59,7 @@ export class BullMQEventBus extends CoreEventBus {
 
 	protected async _publishInternal(event: DomainEvent): Promise<string[]> {
 		const key = this._eventKey(event.name, event.version);
-
-		// Merge local handlers + remote handler stubs as publish targets
-		const localHandlers = this.handlers.get(key) || [];
-		const remoteHandlers = (this as any).remoteHandlers.get(key) || [];
-		const allTargets = [
-			...localHandlers,
-			...remoteHandlers.filter(
-				(r: any) => !localHandlers.some((l) => l.handlerName === r.handlerName),
-			),
-		];
+		const allTargets = this._resolvePublishTargets(key);
 
 		if (allTargets.length === 0) {
 			this._log(`No handlers for ${key}, skipping`);
@@ -77,7 +68,7 @@ export class BullMQEventBus extends CoreEventBus {
 
 		const results = await Promise.all(
 			allTargets.map((h) => {
-				const q = this._getOrCreateQueue(this._queueName(h));
+				const q = this._getOrCreateQueue(h);
 				this._log(`Queuing ${key} → ${this._queueName(h)}`);
 				return q.add(key, event, { jobId: event.id });
 			}),
@@ -103,7 +94,7 @@ export class BullMQEventBus extends CoreEventBus {
 						...job.data,
 						occurredAt: new Date(job.data.occurredAt),
 					};
-					await handler.handle(event);
+					await this._guardedHandle(event, handler);
 				} catch (error) {
 					this.logger.error(
 						`Handler "${handler.handlerName}" failed for job ${job.id}: ${error}`,
@@ -111,7 +102,10 @@ export class BullMQEventBus extends CoreEventBus {
 					throw error;
 				}
 			},
-			{ connection: this.config.redis! },
+			{
+				connection: this.config.redis!,
+				concurrency: this._resolveConcurrency(handler),
+			},
 		);
 		worker.on("failed", (job, err) => {
 			this.logger.error(
@@ -121,18 +115,27 @@ export class BullMQEventBus extends CoreEventBus {
 		this.workers.push(worker);
 	}
 
-	private _getOrCreateQueue(name: string): Queue {
+	private _getOrCreateQueue(
+		handler: Pick<EventHandler, "eventName" | "eventVersion" | "handlerName" | "retry">,
+	): Queue {
+		const name = this._queueName(handler);
 		if (!this.queues.has(name)) {
+			const policy = this._resolveRetryPolicy(handler);
 			this.queues.set(
 				name,
-				new Queue(name, { connection: this.config.redis! }),
+				new Queue(name, {
+					connection: this.config.redis!,
+					defaultJobOptions: {
+						// BullMQ's `attempts` counts the first try; our `maxRetries`
+						// means "retries after the first try" (matches pg-boss's own
+						// retryLimit semantics), hence the +1.
+						attempts: policy.maxRetries + 1,
+						backoff: { type: "fixed", delay: policy.retryDelay },
+					},
+				}),
 			);
 		}
 		return this.queues.get(name)!;
-	}
-
-	private _queueName(handler: EventHandler): string {
-		return `${handler.eventName}@${handler.eventVersion}--${handler.handlerName}`;
 	}
 }
 
