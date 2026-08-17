@@ -1,7 +1,16 @@
 {
 	"name": "@event-bus-manager/core",
-	"version": "0.1.12",
+	"version": "0.2.2",
 	"description": "Core interfaces and logic for Event Bus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/khapu2906/event-bus-manager.git",
+		"directory": "packages/core"
+	},
+	"homepage": "https://github.com/khapu2906/event-bus-manager/tree/main/packages/core#readme",
+	"bugs": {
+		"url": "https://github.com/khapu2906/event-bus-manager/issues"
+	},
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"exports": {
