@@ -6,3 +6,5 @@ export * from "./config";
 export * from "./logger";
 export * from "./factory";
 export * from "./in-memory-event-bus";
+export * from "./outbox";
+export * from "./inbox";

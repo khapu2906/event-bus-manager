@@ -1,6 +1,7 @@
+import type { InboxStore } from "./inbox";
+
 export type EventBusRole = "both" | "publisher" | "consumer";
 export type EventBusEvents = "*" | string[];
-export type EventBusHandlers = "*" | string[];
 export type EventBusWorkers = "*" | string[];
 
 export interface EventBusAsyncConfig {
@@ -17,56 +18,46 @@ export interface EventBusConfig {
 	type: EventBusType;
 	role: EventBusRole;
 	events: EventBusEvents;
-	handlers: EventBusHandlers;
 	workers: EventBusWorkers;
 	async: EventBusAsyncConfig;
+	concurrency: number;
+	/** Opt-in Inbox idempotency store — no behavior change if unset. */
+	inboxStore?: InboxStore;
 	debug?: boolean;
 	// Allow transport-specific extra fields (e.g. redis, connectionString)
 	[key: string]: unknown;
 }
 
+/** Parses a comma-separated env var into a list, or "*" when unset/wildcard. */
+function parseListEnv(name: string): "*" | string[] {
+	const env = process.env[name]?.trim();
+	if (!env || env === "*") return "*";
+	return env
+		.split(",")
+		.map((v) => v.trim())
+		.filter(Boolean);
+}
+
 export function resolveCoreConfig(
 	overrides?: Partial<EventBusConfig>,
 ): EventBusConfig {
-	const resolveEvents = (): EventBusEvents => {
-		const env = process.env.EVENT_BUS_EVENTS?.trim();
-		if (!env || env === "*") return "*";
-		return env
-			.split(",")
-			.map((e: string) => e.trim())
-			.filter(Boolean);
-	};
-
-	const resolveHandlers = (): EventBusHandlers => {
-		const env = process.env.EVENT_BUS_HANDLERS?.trim();
-		if (!env || env === "*") return "*";
-		return env
-			.split(",")
-			.map((h: string) => h.trim())
-			.filter(Boolean);
-	};
-
-	const resolveWorkers = (): EventBusWorkers => {
-		const env = process.env.EVENT_BUS_WORKERS?.trim();
-		if (!env || env === "*") return "*";
-		return env
-			.split(",")
-			.map((w: string) => w.trim())
-			.filter(Boolean);
-	};
-
 	const resolveType = (): EventBusType => {
 		return process.env.EVENT_BUS_TYPE?.toLowerCase() || "memory";
 	};
 
 	return {
+		// Spread first so transport-specific extra fields (redis, connectionString, ...)
+		// pass through untouched; the explicit keys below always win over raw overrides.
+		...overrides,
 		type: overrides?.type ?? resolveType(),
 		role:
 			overrides?.role ??
 			((process.env.EVENT_BUS_ROLE as EventBusRole) || "both"),
-		events: overrides?.events ?? resolveEvents(),
-		handlers: overrides?.handlers ?? resolveHandlers(),
-		workers: overrides?.workers ?? resolveWorkers(),
+		events: overrides?.events ?? parseListEnv("EVENT_BUS_EVENTS"),
+		workers: overrides?.workers ?? parseListEnv("EVENT_BUS_WORKERS"),
+		concurrency:
+			overrides?.concurrency ??
+			parseInt(process.env.EVENT_BUS_CONCURRENCY || "1", 10),
 		debug: overrides?.debug ?? process.env.EVENT_BUS_DEBUG === "true",
 		async: {
 			maxRetries: parseInt(process.env.EVENT_BUS_MAX_RETRIES || "3", 10),

@@ -47,9 +47,9 @@ export class PgBossEventBus extends CoreEventBus {
 
 	protected async _publishInternal(event: DomainEvent): Promise<string[]> {
 		const key = this._eventKey(event.name, event.version);
-		const handlers = this.handlers.get(key) || [];
+		const allTargets = this._resolvePublishTargets(key);
 		const results = await Promise.all(
-			handlers.map((h) =>
+			allTargets.map((h) =>
 				this.boss.send(this._queueName(h), event, { id: event.id }),
 			),
 		);
@@ -65,25 +65,31 @@ export class PgBossEventBus extends CoreEventBus {
 
 	private async _registerWorker(handler: EventHandler): Promise<void> {
 		const queueName = this._queueName(handler);
-		await this.boss.createQueue(queueName);
-		await this.boss.work(queueName, async (jobs: Array<Job<DomainEvent>>) => {
-			for (const job of jobs) {
-				try {
-					const event: DomainEvent = {
-						...job.data,
-						occurredAt: new Date(job.data.occurredAt),
-					};
-					await handler.handle(event);
-				} catch (error) {
-					this.logger.error(`Handler ${handler.handlerName} failed: ${error}`);
-					throw error;
-				}
-			}
+		const policy = this._resolveRetryPolicy(handler);
+		await this.boss.createQueue(queueName, {
+			retryLimit: policy.maxRetries,
+			// core's retryDelay is documented in milliseconds; pg-boss expects seconds.
+			retryDelay: Math.round(policy.retryDelay / 1000),
+			retryBackoff: false,
 		});
-	}
-
-	private _queueName(handler: EventHandler): string {
-		return `${handler.eventName}@${handler.eventVersion}--${handler.handlerName}`;
+		await this.boss.work(
+			queueName,
+			{ localConcurrency: this._resolveConcurrency(handler) },
+			async (jobs: Array<Job<DomainEvent>>) => {
+				for (const job of jobs) {
+					try {
+						const event: DomainEvent = {
+							...job.data,
+							occurredAt: new Date(job.data.occurredAt),
+						};
+						await this._guardedHandle(event, handler);
+					} catch (error) {
+						this.logger.error(`Handler ${handler.handlerName} failed: ${error}`);
+						throw error;
+					}
+				}
+			},
+		);
 	}
 }
 
